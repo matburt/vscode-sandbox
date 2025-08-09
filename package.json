@@ -1,0 +1,77 @@
+{
+  "name": "vscode-sandbox",
+  "displayName": "Sandbox",
+  "description": "VS Code/Cursor extension for the sandbox CLI.",
+  "version": "0.0.1",
+  "publisher": "matburt",
+  "engines": { "vscode": "^1.88.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onView:sandboxExplorer",
+    "onCommand:sandbox.refresh",
+    "onCommand:sandbox.enter",
+    "onCommand:sandbox.diff",
+    "onCommand:sandbox.accept",
+    "onCommand:sandbox.reject",
+    "onCommand:sandbox.sync",
+    "onCommand:sandbox.stop",
+    "onCommand:sandbox.delete"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        { "id": "sandboxExplorer", "name": "Sandbox" }
+      ]
+    },
+    "commands": [
+      { "command": "sandbox.refresh", "title": "Sandbox: Refresh" },
+      { "command": "sandbox.enter", "title": "Sandbox: Enter" },
+      { "command": "sandbox.diff", "title": "Sandbox: Diff" },
+      { "command": "sandbox.accept", "title": "Sandbox: Accept" },
+      { "command": "sandbox.reject", "title": "Sandbox: Reject" },
+      { "command": "sandbox.sync", "title": "Sandbox: Sync" },
+      { "command": "sandbox.stop", "title": "Sandbox: Stop" },
+      { "command": "sandbox.delete", "title": "Sandbox: Delete" },
+      { "command": "sandbox.showConfig", "title": "Sandbox: Show Config" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "sandbox.refresh", "when": "view == sandboxExplorer", "group": "navigation" },
+        { "command": "sandbox.enter", "when": "view == sandboxExplorer", "group": "navigation@1" },
+        { "command": "sandbox.sync", "when": "view == sandboxExplorer", "group": "navigation@2" },
+        { "command": "sandbox.stop", "when": "view == sandboxExplorer", "group": "navigation@3" },
+        { "command": "sandbox.delete", "when": "view == sandboxExplorer", "group": "navigation@4" },
+        { "command": "sandbox.showConfig", "when": "view == sandboxExplorer", "group": "navigation@5" }
+      ],
+      "view/item/context": [
+        { "command": "sandbox.diff", "when": "view == sandboxExplorer", "group": "inline" },
+        { "command": "sandbox.accept", "when": "view == sandboxExplorer", "group": "inline" },
+        { "command": "sandbox.reject", "when": "view == sandboxExplorer", "group": "inline" }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Sandbox",
+      "properties": {
+        "sandbox.binaryPath": { "type": "string", "default": "sandbox", "description": "Path to sandbox CLI" },
+        "sandbox.name": { "type": "string", "default": "", "description": "Sandbox name (empty uses default)" },
+        "sandbox.net": { "type": "string", "enum": ["none", "host"], "default": "none", "description": "Network mode" },
+        "sandbox.noDefaultBinds": { "type": "boolean", "default": false, "description": "Disable default bind mounts" },
+        "sandbox.bind": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Bind mount entries (e.g., path or src:dest:ro)" },
+        "sandbox.mask": { "type": "array", "items": { "type": "string" }, "default": [], "description": "Mask entries (paths to hide within sandbox)" },
+        "sandbox.ignored": { "type": "boolean", "default": false, "description": "Include files normally filtered by ignore rules" }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=dist/extension.js --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.88.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,8 @@
+**/*.ts
+**/*.map
+**/tsconfig.json
+**/.eslintrc*
+**/.gitignore
+**/.github/**
+**/node_modules/**
+**/docs/**
