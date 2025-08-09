@@ -1,4 +1,5 @@
 import * as cp from 'child_process';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 export interface SandboxConfigInfo {
@@ -23,18 +24,25 @@ export interface SandboxStatusJson {
   [k: string]: unknown;
 }
 
-function buildBaseArgs(): string[] {
+function buildBaseArgs(cwd?: string): string[] {
   const cfg = vscode.workspace.getConfiguration('sandbox');
   const args: string[] = [];
-  const name = cfg.get<string>('name');
+  const nameSetting = cfg.get<string>('name');
   const net = cfg.get<string>('net');
   const noDefaultBinds = cfg.get<boolean>('noDefaultBinds');
   const binds = cfg.get<string[]>('bind') ?? [];
   const masks = cfg.get<string[]>('mask') ?? [];
   const ignored = cfg.get<boolean>('ignored');
-  if (name && name.trim().length > 0) {
-    args.push('--name', name);
+  // Resolve sandbox name: explicit setting takes precedence; otherwise use folder name
+  let resolvedName: string | undefined;
+  if (nameSetting && nameSetting.trim().length > 0) {
+    resolvedName = nameSetting.trim();
+  } else if (cwd && cwd.trim().length > 0) {
+    resolvedName = path.basename(cwd);
+  } else if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+    resolvedName = path.basename(vscode.workspace.workspaceFolders[0].uri.fsPath);
   }
+  if (resolvedName && resolvedName.trim().length > 0) args.push('--name', resolvedName);
   if (net === 'host') {
     args.push('--net=host');
   }
@@ -76,7 +84,7 @@ export async function getBinaryPath(): Promise<string> {
 
 export async function fetchConfig(cwd?: string): Promise<SandboxConfigInfo> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'config', '--json', 'name', 'storage_dir', 'upper_cwd', 'overlay_cwd'];
+  const args = [...buildBaseArgs(cwd), 'config', '--json', 'name', 'storage_dir', 'upper_cwd', 'overlay_cwd'];
   const res = await execFile(bin, args, cwd);
   try {
     const parsed = JSON.parse(res.stdout) as Record<string, unknown>;
@@ -93,7 +101,7 @@ export async function fetchConfig(cwd?: string): Promise<SandboxConfigInfo> {
 
 export async function fetchStatus(cwd?: string): Promise<SandboxChangeEntry[]> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'status', '--json'];
+  const args = [...buildBaseArgs(cwd), 'status', '--json'];
   const res = await execFile(bin, args, cwd);
   try {
     const parsed = JSON.parse(res.stdout) as SandboxStatusJson;
@@ -105,21 +113,21 @@ export async function fetchStatus(cwd?: string): Promise<SandboxChangeEntry[]> {
 
 export async function runAccept(patterns: string[], cwd?: string): Promise<void> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'accept', ...patterns];
+  const args = [...buildBaseArgs(cwd), 'accept', ...patterns];
   const res = await execFile(bin, args, cwd);
   if (res.code !== 0) throw new Error(res.stderr || res.stdout);
 }
 
 export async function runReject(patterns: string[], cwd?: string): Promise<void> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'reject', ...patterns];
+  const args = [...buildBaseArgs(cwd), 'reject', ...patterns];
   const res = await execFile(bin, args, cwd);
   if (res.code !== 0) throw new Error(res.stderr || res.stdout);
 }
 
 export async function runDiff(patterns: string[], cwd?: string): Promise<string> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'diff', ...patterns];
+  const args = [...buildBaseArgs(cwd), 'diff', ...patterns];
   const res = await execFile(bin, args, cwd);
   if (res.code !== 0) throw new Error(res.stderr || res.stdout);
   return res.stdout;
@@ -135,7 +143,7 @@ export async function spawnDiffStream(
   cwd?: string
 ): Promise<void> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'diff', ...patterns];
+  const args = [...buildBaseArgs(cwd), 'diff', ...patterns];
   const child = cp.spawn(bin, args, { cwd, env: process.env });
   child.stdout.on('data', (d) => handlers.onStdout?.(d.toString()));
   child.stderr.on('data', (d) => handlers.onStderr?.(d.toString()));
@@ -144,21 +152,21 @@ export async function spawnDiffStream(
 
 export async function runSync(cwd?: string): Promise<void> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'sync'];
+  const args = [...buildBaseArgs(cwd), 'sync'];
   const res = await execFile(bin, args, cwd);
   if (res.code !== 0) throw new Error(res.stderr || res.stdout);
 }
 
 export async function runStop(cwd?: string): Promise<void> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'stop'];
+  const args = [...buildBaseArgs(cwd), 'stop'];
   const res = await execFile(bin, args, cwd);
   if (res.code !== 0) throw new Error(res.stderr || res.stdout);
 }
 
 export async function runDelete(cwd?: string): Promise<void> {
   const bin = await getBinaryPath();
-  const args = [...buildBaseArgs(), 'delete', '-y'];
+  const args = [...buildBaseArgs(cwd), 'delete', '-y'];
   const res = await execFile(bin, args, cwd);
   if (res.code !== 0) throw new Error(res.stderr || res.stdout);
 }
@@ -166,7 +174,7 @@ export async function runDelete(cwd?: string): Promise<void> {
 export function openSandboxTerminal(cwd?: string): vscode.Terminal {
   const cfg = vscode.workspace.getConfiguration('sandbox');
   const bin = cfg.get<string>('binaryPath') || 'sandbox';
-  const args = buildBaseArgs();
+  const args = buildBaseArgs(cwd);
   const shell = process.env.SHELL || 'sh';
   const fullCmd = [bin, ...args, shell].join(' ');
   const term = vscode.window.createTerminal({ name: 'Sandbox', cwd });
