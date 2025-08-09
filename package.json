@@ -48,7 +48,7 @@
         { "command": "sandbox.stop", "when": "view == sandboxExplorer", "group": "navigation@3" },
         { "command": "sandbox.delete", "when": "view == sandboxExplorer", "group": "navigation@4" },
         { "command": "sandbox.showConfig", "when": "view == sandboxExplorer", "group": "navigation@5" },
-        { "command": "sandbox.useOverlayInExplorer", "when": "view == sandboxExplorer", "group": "navigation@6" },
+        { "command": "sandbox.useOverlayInExplorer", "when": "view == sandboxExplorer && !sandbox.inOverlayRoot", "group": "navigation@6" },
         { "command": "sandbox.restoreWorkspaceFolder", "when": "view == sandboxExplorer && sandbox.hasOriginal", "group": "navigation@7" }
       ],
       "view/item/context": [

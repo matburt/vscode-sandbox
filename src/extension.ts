@@ -63,6 +63,30 @@ export function activate(context: vscode.ExtensionContext) {
   const cwd = getWorkspaceCwd();
   const treeProvider = new SandboxTreeDataProvider(vscode.workspace.workspaceFolders?.[0]);
 
+  // Keep VS Code contexts in sync with whether the explorer root is the overlay
+  async function updateSandboxContexts() {
+    const current = getWorkspaceCwd();
+    let inOverlayRoot = false;
+    let hasOriginal = false;
+    try {
+      const cfg = await fetchConfig(current);
+      const overlay = cfg.overlay_cwd || cfg.upper_cwd;
+      inOverlayRoot = !!overlay && !!current && overlay === current;
+    } catch {
+      inOverlayRoot = false;
+    }
+    try {
+      const original = current ? await recallOriginalForOverlay(context, current) : undefined;
+      hasOriginal = !!original;
+    } catch {
+      hasOriginal = false;
+    }
+    await vscode.commands.executeCommand('setContext', 'sandbox.inOverlayRoot', inOverlayRoot);
+    await vscode.commands.executeCommand('setContext', 'sandbox.hasOriginal', hasOriginal);
+    treeProvider.setUiContext(inOverlayRoot, hasOriginal);
+    treeProvider.refresh();
+  }
+
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('sandboxExplorer', treeProvider),
     vscode.commands.registerCommand('sandbox.refresh', () => treeProvider.refresh()),
@@ -175,6 +199,8 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         await handleCliError(err);
       }
+      // Best-effort update (window likely reloads)
+      await updateSandboxContexts();
     }),
     vscode.commands.registerCommand('sandbox.restoreWorkspaceFolder', async () => {
       const current = getWorkspaceCwd();
@@ -186,6 +212,7 @@ export function activate(context: vscode.ExtensionContext) {
       } else {
         vscode.window.showWarningMessage('No recorded original workspace for this overlay. Use "Add Overlay as Folder" or open your workspace manually.');
       }
+      await updateSandboxContexts();
     }),
     vscode.commands.registerCommand('sandbox.addOverlayFolder', async () => {
       try {
@@ -200,6 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         await handleCliError(err);
       }
+      await updateSandboxContexts();
     }),
     vscode.commands.registerCommand('sandbox.removeOverlayFolder', async () => {
       const folders = vscode.workspace.workspaceFolders ?? [];
@@ -207,6 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (idx >= 0) {
         await vscode.workspace.updateWorkspaceFolders(idx, 1);
       }
+      await updateSandboxContexts();
     })
   );
 
@@ -216,7 +245,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidSaveTextDocument(() => debounced()),
     vscode.workspace.onDidCreateFiles(() => debounced()),
     vscode.workspace.onDidDeleteFiles(() => debounced()),
-    vscode.workspace.onDidRenameFiles(() => debounced())
+    vscode.workspace.onDidRenameFiles(() => debounced()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => updateSandboxContexts())
   );
 
   // Status bar indicator for sandbox terminal presence
@@ -257,6 +287,9 @@ export function activate(context: vscode.ExtensionContext) {
       refreshStatusVisibility();
     })
   );
+
+  // Initialize contexts on activation
+  updateSandboxContexts();
 }
 
 export function deactivate() {}

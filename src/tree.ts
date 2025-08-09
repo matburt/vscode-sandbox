@@ -5,7 +5,16 @@ export class SandboxTreeDataProvider implements vscode.TreeDataProvider<SandboxN
   private _onDidChangeTreeData = new vscode.EventEmitter<SandboxNode | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  // UI context flags set from extension based on overlay state
+  private inOverlayRoot: boolean = false;
+  private hasOriginalWorkspace: boolean = false;
+
   constructor(private readonly workspaceFolder?: vscode.WorkspaceFolder) {}
+
+  setUiContext(inOverlayRoot: boolean, hasOriginalWorkspace: boolean): void {
+    this.inOverlayRoot = inOverlayRoot;
+    this.hasOriginalWorkspace = hasOriginalWorkspace;
+  }
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
@@ -39,7 +48,10 @@ export class SandboxTreeDataProvider implements vscode.TreeDataProvider<SandboxN
         const groups = groupByOperation(changes);
         const order = ['error', 'remove', 'rename', 'modify', 'create'];
         const nodes: SandboxNode[] = [];
-        nodes.push(buildActionsGroupNode(cwd));
+        if (this.inOverlayRoot) {
+          nodes.push(buildOverlayIndicatorNode());
+        }
+        nodes.push(buildActionsGroupNode(cwd, this.inOverlayRoot, this.hasOriginalWorkspace));
         for (const op of order) {
           const list = groups.get(op);
           if (!list || list.length === 0) continue;
@@ -91,7 +103,10 @@ export class SandboxTreeDataProvider implements vscode.TreeDataProvider<SandboxN
       const groups = groupByOperation(changes);
       const order = ['error', 'remove', 'rename', 'modify', 'create'];
       const nodes: SandboxNode[] = [];
-      nodes.push(buildActionsGroupNode(cwd));
+      if (this.inOverlayRoot) {
+        nodes.push(buildOverlayIndicatorNode());
+      }
+      nodes.push(buildActionsGroupNode(cwd, this.inOverlayRoot, this.hasOriginalWorkspace));
       for (const op of order) {
         const list = groups.get(op);
         if (!list || list.length === 0) continue;
@@ -233,7 +248,7 @@ function buildDirectoryHierarchy(changes: SandboxChangeEntry[], cwd?: string): S
   return toNodes(root);
 }
 
-function buildActionsGroupNode(cwd: string): SandboxNode {
+function buildActionsGroupNode(cwd: string, inOverlayRoot: boolean, hasOriginalWorkspace: boolean): SandboxNode {
   const group = new SandboxNode('Actions', vscode.TreeItemCollapsibleState.Expanded, undefined, 'actions');
   group.iconPath = new vscode.ThemeIcon('tools');
 
@@ -243,6 +258,17 @@ function buildActionsGroupNode(cwd: string): SandboxNode {
     n.command = { title: label, command, arguments: args };
     return n;
   };
+
+  if (inOverlayRoot) {
+    const children: SandboxNode[] = [
+      makeAction('Enter Sandbox', 'sandbox.enter', 'terminal', []),
+    ];
+    if (hasOriginalWorkspace) {
+      children.push(makeAction('Restore Workspace Folder', 'sandbox.restoreWorkspaceFolder', 'folder', []));
+    }
+    group.children = children;
+    return group;
+  }
 
   group.children = [
     makeAction('Enter Sandbox', 'sandbox.enter', 'terminal', []),
@@ -257,4 +283,12 @@ function buildActionsGroupNode(cwd: string): SandboxNode {
     makeAction('Show Config', 'sandbox.showConfig', 'gear', []),
   ];
   return group;
+}
+
+function buildOverlayIndicatorNode(): SandboxNode {
+  const indicator = new SandboxNode('Overlay active', vscode.TreeItemCollapsibleState.None, undefined, 'info');
+  indicator.iconPath = new vscode.ThemeIcon('layers-active');
+  indicator.tooltip = 'You are viewing the sandbox overlay. Use "Restore Workspace Folder" to return to your original workspace.';
+  indicator.accessibilityInformation = { label: 'Overlay active', role: 'text' };
+  return indicator;
 }
