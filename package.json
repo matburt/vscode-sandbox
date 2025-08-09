@@ -2,7 +2,7 @@
   "name": "vscode-sandbox",
   "displayName": "Sandbox",
   "description": "VS Code/Cursor extension for the sandbox CLI.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "matburt",
   "engines": { "vscode": "^1.88.0" },
   "categories": ["Other"],

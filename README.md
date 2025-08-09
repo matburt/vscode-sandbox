@@ -10,6 +10,19 @@ A VS Code/Cursor extension that integrates with the [`sandbox` CLI](https://gith
 - Status bar shortcut to open a sandbox terminal
 - Configurable CLI path, sandbox name, network, binds, masks, and ignored
 
+### Overlay indicator
+- When the Explorer is showing the overlay, the Sandbox view shows an indicator and limits actions to only:
+  - Enter Sandbox
+  - Restore Workspace Folder (if an original was recorded)
+
+Screenshots:
+- Normal workspace — full actions
+  - ![Normal workspace actions](docs/images/normal-workspace-actions.png)
+- Overlay active — indicator visible, actions filtered
+  - ![Overlay active](docs/images/overlay-active.png)
+- Overlay without mapping — indicator visible, restore hidden
+  - ![Overlay no mapping](docs/images/overlay-no-mapping.png)
+
 ## Requirements
 - Linux host with `sandbox` CLI installed and setuid root (or run as root). If you see an insufficient permissions error, install via `make install` in the CLI repo.
 - The CLI supports JSON output for status and config; this extension uses those endpoints.
