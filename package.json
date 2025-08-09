@@ -15,7 +15,10 @@
     "onCommand:sandbox.reject",
     "onCommand:sandbox.sync",
     "onCommand:sandbox.stop",
-    "onCommand:sandbox.delete"
+    "onCommand:sandbox.delete",
+    "onCommand:sandbox.showConfig",
+    "onCommand:sandbox.useOverlayInExplorer",
+    "onCommand:sandbox.restoreWorkspaceFolder"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -33,7 +36,9 @@
       { "command": "sandbox.sync", "title": "Sandbox: Sync" },
       { "command": "sandbox.stop", "title": "Sandbox: Stop" },
       { "command": "sandbox.delete", "title": "Sandbox: Delete" },
-      { "command": "sandbox.showConfig", "title": "Sandbox: Show Config" }
+      { "command": "sandbox.showConfig", "title": "Sandbox: Show Config" },
+      { "command": "sandbox.useOverlayInExplorer", "title": "Sandbox: Use Overlay in Explorer" },
+      { "command": "sandbox.restoreWorkspaceFolder", "title": "Sandbox: Restore Workspace Folder" }
     ],
     "menus": {
       "view/title": [
@@ -42,12 +47,14 @@
         { "command": "sandbox.sync", "when": "view == sandboxExplorer", "group": "navigation@2" },
         { "command": "sandbox.stop", "when": "view == sandboxExplorer", "group": "navigation@3" },
         { "command": "sandbox.delete", "when": "view == sandboxExplorer", "group": "navigation@4" },
-        { "command": "sandbox.showConfig", "when": "view == sandboxExplorer", "group": "navigation@5" }
+        { "command": "sandbox.showConfig", "when": "view == sandboxExplorer", "group": "navigation@5" },
+        { "command": "sandbox.useOverlayInExplorer", "when": "view == sandboxExplorer", "group": "navigation@6" },
+        { "command": "sandbox.restoreWorkspaceFolder", "when": "view == sandboxExplorer && sandbox.hasOriginal", "group": "navigation@7" }
       ],
       "view/item/context": [
-        { "command": "sandbox.diff", "when": "view == sandboxExplorer", "group": "inline" },
-        { "command": "sandbox.accept", "when": "view == sandboxExplorer", "group": "inline" },
-        { "command": "sandbox.reject", "when": "view == sandboxExplorer", "group": "inline" }
+        { "command": "sandbox.diff", "when": "view == sandboxExplorer && viewItem =~ /(change|folder)/", "group": "inline" },
+        { "command": "sandbox.accept", "when": "view == sandboxExplorer && viewItem =~ /(change|folder)/", "group": "inline" },
+        { "command": "sandbox.reject", "when": "view == sandboxExplorer && viewItem =~ /(change|folder)/", "group": "inline" }
       ]
     },
     "configuration": {

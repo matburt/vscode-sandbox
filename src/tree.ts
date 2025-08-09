@@ -39,6 +39,7 @@ export class SandboxTreeDataProvider implements vscode.TreeDataProvider<SandboxN
         const groups = groupByOperation(changes);
         const order = ['error', 'remove', 'rename', 'modify', 'create'];
         const nodes: SandboxNode[] = [];
+        nodes.push(buildActionsGroupNode(cwd));
         for (const op of order) {
           const list = groups.get(op);
           if (!list || list.length === 0) continue;
@@ -90,6 +91,7 @@ export class SandboxTreeDataProvider implements vscode.TreeDataProvider<SandboxN
       const groups = groupByOperation(changes);
       const order = ['error', 'remove', 'rename', 'modify', 'create'];
       const nodes: SandboxNode[] = [];
+      nodes.push(buildActionsGroupNode(cwd));
       for (const op of order) {
         const list = groups.get(op);
         if (!list || list.length === 0) continue;
@@ -158,6 +160,14 @@ export class SandboxNode extends vscode.TreeItem {
     super(label, collapsibleState);
     this.targetPath = targetPath;
     this.op = op;
+    // Mark context values to drive when-clauses for context menu
+    if (op === 'folder') {
+      this.contextValue = 'folder';
+    } else if (op === 'actions' || op === 'action' || op === 'workspace') {
+      this.contextValue = op;
+    } else {
+      this.contextValue = 'change';
+    }
     if (!collapsibleState || collapsibleState === vscode.TreeItemCollapsibleState.None) {
       this.command = {
         title: 'Diff',
@@ -221,4 +231,30 @@ function buildDirectoryHierarchy(changes: SandboxChangeEntry[], cwd?: string): S
   };
 
   return toNodes(root);
+}
+
+function buildActionsGroupNode(cwd: string): SandboxNode {
+  const group = new SandboxNode('Actions', vscode.TreeItemCollapsibleState.Expanded, undefined, 'actions');
+  group.iconPath = new vscode.ThemeIcon('tools');
+
+  const makeAction = (label: string, command: string, icon: string, args: any[] = []) => {
+    const n = new SandboxNode(label, vscode.TreeItemCollapsibleState.None, undefined, 'action');
+    n.iconPath = new vscode.ThemeIcon(icon);
+    n.command = { title: label, command, arguments: args };
+    return n;
+  };
+
+  group.children = [
+    makeAction('Enter Sandbox', 'sandbox.enter', 'terminal', []),
+    makeAction('Refresh', 'sandbox.refresh', 'refresh', []),
+    makeAction('Sync', 'sandbox.sync', 'sync', []),
+    makeAction('Stop', 'sandbox.stop', 'debug-stop', []),
+    makeAction('Delete', 'sandbox.delete', 'trash', []),
+    makeAction('Add Overlay as Folder', 'sandbox.addOverlayFolder', 'new-folder', []),
+    makeAction('Remove Overlay Folder', 'sandbox.removeOverlayFolder', 'folder', []),
+    makeAction('Use Overlay in Explorer', 'sandbox.useOverlayInExplorer', 'folder-opened', []),
+    makeAction('Restore Workspace Folder', 'sandbox.restoreWorkspaceFolder', 'folder', []),
+    makeAction('Show Config', 'sandbox.showConfig', 'gear', []),
+  ];
+  return group;
 }

@@ -129,6 +129,52 @@ export function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         await handleCliError(err);
       }
+    }),
+    vscode.commands.registerCommand('sandbox.useOverlayInExplorer', async () => {
+      try {
+        const cfg = await fetchConfig(cwd);
+        const overlay = cfg.overlay_cwd || cfg.upper_cwd;
+        if (!overlay) throw new Error('overlay_cwd/upper_cwd not available from config');
+        const originalRoot = getWorkspaceCwd() || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (originalRoot) {
+          await rememberOverlayMapping(context, overlay, originalRoot);
+        }
+        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(overlay), false);
+      } catch (err) {
+        await handleCliError(err);
+      }
+    }),
+    vscode.commands.registerCommand('sandbox.restoreWorkspaceFolder', async () => {
+      const current = getWorkspaceCwd();
+      if (!current) return;
+      const original = await recallOriginalForOverlay(context, current);
+      if (original) {
+        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(original), false);
+        await forgetOverlayMapping(context, current);
+      } else {
+        vscode.window.showWarningMessage('No recorded original workspace for this overlay. Use "Add Overlay as Folder" or open your workspace manually.');
+      }
+    }),
+    vscode.commands.registerCommand('sandbox.addOverlayFolder', async () => {
+      try {
+        const cfg = await fetchConfig(cwd);
+        const overlay = cfg.overlay_cwd || cfg.upper_cwd;
+        if (!overlay) throw new Error('overlay_cwd/upper_cwd not available from config');
+        await vscode.workspace.updateWorkspaceFolders(
+          (vscode.workspace.workspaceFolders?.length ?? 0),
+          0,
+          { uri: vscode.Uri.file(overlay), name: 'Sandbox Overlay' }
+        );
+      } catch (err) {
+        await handleCliError(err);
+      }
+    }),
+    vscode.commands.registerCommand('sandbox.removeOverlayFolder', async () => {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const idx = folders.findIndex((f) => f.name === 'Sandbox Overlay');
+      if (idx >= 0) {
+        await vscode.workspace.updateWorkspaceFolders(idx, 1);
+      }
     })
   );
 
@@ -189,4 +235,19 @@ function debounce(fn: () => void, delayMs: number) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => fn(), delayMs);
   };
+}
+
+async function rememberOverlayMapping(context: vscode.ExtensionContext, overlayPath: string, originalPath: string) {
+  const key = `overlayMap:${overlayPath}`;
+  await context.globalState.update(key, originalPath);
+}
+
+async function recallOriginalForOverlay(context: vscode.ExtensionContext, overlayPath: string): Promise<string | undefined> {
+  const key = `overlayMap:${overlayPath}`;
+  return context.globalState.get<string>(key);
+}
+
+async function forgetOverlayMapping(context: vscode.ExtensionContext, overlayPath: string) {
+  const key = `overlayMap:${overlayPath}`;
+  await context.globalState.update(key, undefined);
 }
