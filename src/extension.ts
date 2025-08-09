@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import {
   openSandboxTerminal,
   runAccept,
@@ -8,9 +11,11 @@ import {
   runStop,
   runDelete,
   fetchConfig,
+  fetchStatus,
   spawnDiffStream,
 } from './cli';
 import { SandboxTreeDataProvider } from './tree';
+import { SandboxChangeEntry } from './cli';
 
 function getWorkspaceCwd(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -64,20 +69,47 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('sandbox.diff', async (patternsArg?: unknown) => {
       const patterns = await ensurePatterns(patternsArg);
       if (!patterns) return;
-      const channel = vscode.window.createOutputChannel('Sandbox Diff');
-      channel.clear();
-      channel.show(true);
-      await spawnDiffStream(
-        patterns,
-        {
-          onStdout: (chunk) => channel.append(chunk),
-          onStderr: (chunk) => channel.append(`[stderr] ${chunk}`),
-          onClose: (code) => {
-            if (code !== 0) channel.appendLine(`\nExited with code ${code}`);
-          },
-        },
-        cwd
-      );
+
+      // Attempt to open VS Code diff editors based on status JSON first
+      try {
+        const changes = await fetchStatus(cwd);
+        const matching = filterChangesByPatterns(changes, patterns);
+        if (matching.length === 0) {
+          await streamTextualDiff(patterns, cwd);
+          return;
+        }
+
+        // If multiple matches, present a picker (multi-select)
+        let selected = matching;
+        if (matching.length > 1) {
+          const picks = await vscode.window.showQuickPick(
+            matching.map((c) => ({
+              label: labelForChange(c),
+              description: c.operation,
+              change: c,
+            })),
+            { canPickMany: true, placeHolder: 'Select file(s) to open diffs' }
+          );
+          if (!picks || picks.length === 0) {
+            // Fallback to textual stream if user cancels/no selection
+            await streamTextualDiff(patterns, cwd);
+            return;
+          }
+          selected = picks.map((p) => p.change);
+        }
+
+        let openedAny = false;
+        for (const c of selected) {
+          const ok = await openDiffForChange(c);
+          if (ok) openedAny = true;
+        }
+        if (!openedAny) {
+          await streamTextualDiff(patterns, cwd);
+        }
+      } catch (err) {
+        // On any failure, keep legacy behavior
+        await streamTextualDiff(patterns, cwd);
+      }
     }),
     vscode.commands.registerCommand('sandbox.accept', async (patternsArg?: unknown) => {
       const patterns = await ensurePatterns(patternsArg);
@@ -250,4 +282,96 @@ async function recallOriginalForOverlay(context: vscode.ExtensionContext, overla
 async function forgetOverlayMapping(context: vscode.ExtensionContext, overlayPath: string) {
   const key = `overlayMap:${overlayPath}`;
   await context.globalState.update(key, undefined);
+}
+
+// ---------- Diff helpers ----------
+
+function globToRegex(glob: string): RegExp {
+  // Very lightweight glob -> regex for ** and * patterns
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, '::DOUBLE_STAR::')
+    .replace(/\*/g, '[^/]*')
+    .replace(/::DOUBLE_STAR::/g, '.*');
+  return new RegExp('^' + escaped + '$');
+}
+
+function filterChangesByPatterns(changes: SandboxChangeEntry[], patterns: string[]): SandboxChangeEntry[] {
+  const regexes = patterns.map((p) => globToRegex(p));
+  return changes.filter((c) => regexes.some((r) => r.test(c.destination)));
+}
+
+function labelForChange(c: SandboxChangeEntry): string {
+  if (c.operation === 'rename' && c.source) return `${c.source} → ${c.destination}`;
+  return c.destination;
+}
+
+async function streamTextualDiff(patterns: string[], cwd?: string): Promise<void> {
+  const channel = vscode.window.createOutputChannel('Sandbox Diff');
+  channel.clear();
+  channel.show(true);
+  await spawnDiffStream(
+    patterns,
+    {
+      onStdout: (chunk) => channel.append(chunk),
+      onStderr: (chunk) => channel.append(`[stderr] ${chunk}`),
+      onClose: (code) => {
+        if (code !== 0) channel.appendLine(`\nExited with code ${code}`);
+      },
+    },
+    cwd
+  );
+}
+
+function fileExists(p?: string | null): boolean {
+  if (!p) return false;
+  try {
+    fs.accessSync(p, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createTempEmptyFile(prefix: string): vscode.Uri {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-empty-'));
+  const tmpPath = path.join(tmpDir, prefix.replace(/[^a-zA-Z0-9._-]/g, '_') || 'empty');
+  fs.writeFileSync(tmpPath, '');
+  return vscode.Uri.file(tmpPath);
+}
+
+async function openDiffForChange(c: SandboxChangeEntry): Promise<boolean> {
+  try {
+    const operation = c.operation;
+    let left: vscode.Uri;
+    let right: vscode.Uri;
+
+    const overlayPath = c.staged || c.tmp_path || c.destination;
+    const overlayUri = vscode.Uri.file(overlayPath);
+    const destExists = fileExists(c.destination);
+    const srcExists = fileExists(c.source);
+
+    if (operation === 'create') {
+      // Compare empty -> overlay
+      left = createTempEmptyFile(path.basename(c.destination));
+      right = overlayUri;
+    } else if (operation === 'remove') {
+      // Compare original -> empty
+      left = fileExists(c.destination) ? vscode.Uri.file(c.destination) : (srcExists ? vscode.Uri.file(c.source!) : createTempEmptyFile('empty'));
+      right = createTempEmptyFile(path.basename(c.destination));
+    } else if (operation === 'rename') {
+      // Compare source -> overlay/destination
+      left = srcExists ? vscode.Uri.file(c.source!) : (destExists ? vscode.Uri.file(c.destination) : createTempEmptyFile('empty'));
+      right = overlayUri;
+    } else {
+      // modify or other: destination (original) -> overlay
+      left = destExists ? vscode.Uri.file(c.destination) : (srcExists ? vscode.Uri.file(c.source!) : createTempEmptyFile('empty'));
+      right = overlayUri;
+    }
+
+    const title = labelForChange(c);
+    await vscode.commands.executeCommand('vscode.diff', left, right, title);
+    return true;
+  } catch {
+    return false;
+  }
 }
